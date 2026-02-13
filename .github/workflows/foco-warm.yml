@@ -9,16 +9,43 @@ jobs:
   warm:
     runs-on: ubuntu-latest
     steps:
-      - name: Warm live endpoints
+      - name: Warm FOCO (robust curl)
+        shell: bash
         run: |
-          set -e
-          curl -fsS "https://foco.infinityfree.me/api.php?live=1&include=periods" >/dev/null
-          curl -fsS "https://foco.infinityfree.me/api.php?live=1&include=events"  >/dev/null
+          set -euo pipefail
 
-      - name: Warm matchday ±2 days (all pages)
-        run: |
-          set -e
+          fetch () {
+            local url="$1"
+            echo "FETCH $url"
+
+            # Try up to 5 times; treat empty replies/timeouts as retryable.
+            # Force HTTP/1.1 to avoid occasional HTTP/2/proxy weirdness.
+            curl --http1.1 -fsS \
+              -A "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36" \
+              -H "Accept: application/json,text/plain,*/*" \
+              -H "Accept-Language: en-US,en;q=0.9" \
+              -H "Referer: https://foco.infinityfree.me/" \
+              --connect-timeout 10 \
+              --max-time 25 \
+              --retry 5 \
+              --retry-all-errors \
+              --retry-delay 2 \
+              "$url" >/dev/null \
+            || {
+              echo "FAILED: $url"
+              echo "Diagnostics (headers/body):"
+              curl --http1.1 -i \
+                -A "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36" \
+                --connect-timeout 10 --max-time 25 \
+                "$url" | head -c 2000 || true
+              exit 1
+            }
+          }
+
+          fetch "https://foco.infinityfree.me/api.php?live=1&include=periods"
+          fetch "https://foco.infinityfree.me/api.php?live=1&include=events"
+
           for off in -2 -1 0 1 2; do
             d=$(date -u -d "$off day" +%F)
-            curl -fsS "https://foco.infinityfree.me/api.php?date=$d&allpages=1" >/dev/null
+            fetch "https://foco.infinityfree.me/api.php?date=$d&allpages=1"
           done
