@@ -1,0 +1,24 @@
+name: FOCO Cache Warm
+
+on:
+  schedule:
+    - cron: "*/1 * * * *"   # every minute (UTC)
+  workflow_dispatch:
+
+jobs:
+  warm:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Warm live endpoints
+        run: |
+          set -e
+          curl -fsS "https://foco.infinityfree.me/api.php?live=1&include=periods" >/dev/null
+          curl -fsS "https://foco.infinityfree.me/api.php?live=1&include=events"  >/dev/null
+
+      - name: Warm matchday ±2 days (all pages)
+        run: |
+          set -e
+          for off in -2 -1 0 1 2; do
+            d=$(date -u -d "$off day" +%F)
+            curl -fsS "https://foco.infinityfree.me/api.php?date=$d&allpages=1" >/dev/null
+          done
